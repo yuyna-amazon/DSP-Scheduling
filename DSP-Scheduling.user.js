@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Schedulingで受諾済みを計算v2
+// @name         Schedulingで受諾済みを計算
 // @namespace    https://github.com/yuyna-amazon/DSP-Scheduling
 // @version      8.2
 // @description  Amazon Logistics DSP Scheduling
