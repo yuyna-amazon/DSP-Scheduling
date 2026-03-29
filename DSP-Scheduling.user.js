@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Schedulingで受諾済みを計算
 // @namespace    https://github.com/yuyna-amazon/DSP-Scheduling
-// @version      8.4
+// @version      8.5
 // @description  Amazon Logistics DSP Scheduling
 // @author       yuyna
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=amazon.com
@@ -549,7 +549,7 @@
             <div style="display:grid;grid-template-columns:70px 1fr 1fr;gap:6px;margin-bottom:6px;padding:0 2px;font-size:14px;color:#999;font-weight:bold;">
                 <span></span>
                 <span style="text-align:center;">SPR</span>
-                <span style="text-align:center;color:#f44336;">受諾調整</span>
+                <span style="text-align:center;color:#f44336;">Buffer</span>
             </div>
         `;
 
@@ -565,7 +565,7 @@
 
         const resetBtnHtml = `
             <div style="margin-top:8px;margin-bottom:4px;">
-                <button id="adj-reset-btn" style="width:100%;padding:4px;background:#ff8a80;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;">調整値リセット</button>
+                <button id="adj-reset-btn" style="width:100%;padding:4px;background:#ff8a80;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;">Bufferリセット</button>
             </div>
         `;
 
