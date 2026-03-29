@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Schedulingで受諾済みを計算
 // @namespace    https://github.com/yuyna-amazon/DSP-Scheduling
-// @version      8.3
+// @version      8.4
 // @description  Amazon Logistics DSP Scheduling
 // @author       yuyna
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=amazon.com
@@ -18,6 +18,7 @@
     // === 状態管理 ===
     let currentSSDData = null;
     let currentMultipliers = null;
+    let currentAdjustments = null;
     let isCalculating = false;
     let debounceTimer = null;
     let lastCalculatedDate = null;
@@ -37,6 +38,11 @@
     const SSD_DEFAULTS = {
         'SSD_1': 1, 'SSD_1_B': 1, 'SSD_2': 1,
         'SSD_3': 1, 'SSD_3_B': 1, 'SSD_4': 1
+    };
+
+    const SSD_ADJUSTMENT_DEFAULTS = {
+        'SSD_1': 0, 'SSD_C1': 0, 'SSD_1_B': 0, 'SSD_2': 0,
+        'SSD_3': 0, 'SSD_C3': 0, 'SSD_3_B': 0, 'SSD_4': 0
     };
 
     const SSD_TIME_RANGES = [
@@ -100,6 +106,8 @@
 
     const getSSDMultipliers = () => getStorage('dsp-ssd-multipliers', SSD_DEFAULTS);
     const saveSSDMultipliers = (m) => setStorage('dsp-ssd-multipliers', m);
+    const getSSDAdjustments = () => getStorage('dsp-ssd-adjustments', SSD_ADJUSTMENT_DEFAULTS);
+    const saveSSDAdjustments = (a) => setStorage('dsp-ssd-adjustments', a);
     const getSPRBoxVisible = () => getStorage('dsp-spr-box-visible', true);
     const saveSPRBoxVisible = (v) => setStorage('dsp-spr-box-visible', v);
     const getSSDSectionVisible = () => getStorage('dsp-ssd-section-visible', false);
@@ -276,6 +284,7 @@
 
             currentSSDData = ssdData;
             currentMultipliers = getSSDMultipliers();
+            currentAdjustments = getSSDAdjustments();
             lastCalculatedDate = getCurrentSelectedDate();
 
             showResult(timeDataList, ssdData, totalAccepted, totalRequired, proDPAccepted, proDPRequired);
@@ -329,6 +338,7 @@
             return;
         }
 
+        const adjustments = getSSDAdjustments();
         const wsData = [['Station', 'Cycle', 'Soft Caps', 'Hard Caps']];
         const ssdMapping = [
             { key: 'SSD_1', cycle: 'SSD_1' },
@@ -344,7 +354,9 @@
         for (const ssd of ssdMapping) {
             const data = currentSSDData[ssd.key];
             const multiplier = currentMultipliers[ssd.key] || 1;
-            const softCap = data.accepted * multiplier;
+            const adj = adjustments[ssd.key] || 0;
+            const adjusted = data.accepted + adj;
+            const softCap = adjusted * multiplier;
             wsData.push(['VFK1', ssd.cycle, softCap, Math.round(softCap * 1.1)]);
         }
 
@@ -391,6 +403,13 @@
         document.body.appendChild(box);
     };
 
+    // === 調整値の表示テキスト生成 ===
+    const formatAdjustment = (adj) => {
+        if (adj === 0) return '';
+        const sign = adj > 0 ? '+' : '';
+        return `<span style="color:#f44336;font-weight:bold;font-size:10px;margin-left:2px;">${sign}${adj}</span>`;
+    };
+
     // === 結果表示 ===
     const showResult = (timeDataList, ssdData, totalAccepted, totalRequired, proDPAccepted, proDPRequired) => {
         document.getElementById('dsp-accepted-counter-box')?.remove();
@@ -404,6 +423,7 @@
         `;
 
         const multipliers = getSSDMultipliers();
+        const adjustments = getSSDAdjustments();
         const ssdOrder = ['SSD_1', 'SSD_C1', 'SSD_1_B', 'SSD_2', 'SSD_3', 'SSD_C3', 'SSD_3_B', 'SSD_4'];
         const ssdVisible = getSSDSectionVisible();
         const timeVisible = getTimeSectionVisible();
@@ -412,12 +432,15 @@
             const d = ssdData[ssd];
             if (!d.required && !d.accepted) return '';
             const m = multipliers[ssd] || 1;
-            const soft = d.accepted * m;
+            const adj = adjustments[ssd] || 0;
+            const adjusted = d.accepted + adj;
+            const soft = adjusted * m;
             const hard = Math.round(soft * 1.1);
-            return `<div style="display:grid;grid-template-columns:80px 60px 60px 70px 70px;gap:8px;margin:3px 0;padding:8px;background:#e3f2fd;border-radius:3px;align-items:center;">
-                <span style="font-weight:bold;">${ssd}</span>
+            const adjHtml = formatAdjustment(adj);
+            return `<div style="display:grid;grid-template-columns:80px 60px 70px 70px 70px;gap:6px;margin:3px 0;padding:8px;background:#e3f2fd;border-radius:3px;align-items:center;">
+                <span style="font-weight:bold;font-size:11px;">${ssd}</span>
                 <span style="color:#FF9800;font-weight:bold;text-align:center;">${d.required}</span>
-                <span style="color:#4CAF50;font-weight:bold;text-align:center;">${d.accepted}</span>
+                <span style="color:#4CAF50;font-weight:bold;text-align:center;">${d.accepted}${adjHtml}</span>
                 <span style="color:#2196F3;font-weight:bold;text-align:center;">${soft}</span>
                 <span style="color:#9C27B0;font-weight:bold;text-align:center;">${hard}</span>
             </div>`;
@@ -461,9 +484,12 @@
                 <span id="ssd-icon">${ssdVisible ? '▼' : '▶'}</span>&nbsp;Cycle別
             </div>
             <div id="ssd-content" style="display:${ssdVisible ? 'block' : 'none'};">
-                <div style="display:grid;grid-template-columns:80px 60px 60px 70px 70px;gap:8px;margin-bottom:5px;padding:5px;font-weight:bold;color:#666;font-size:11px;">
-                    <span>Cycle</span><span style="text-align:center;">必須</span><span style="text-align:center;">受諾</span>
-                    <span style="text-align:center;">Soft</span><span style="text-align:center;">Hard</span>
+                <div style="display:grid;grid-template-columns:80px 60px 70px 70px 70px;gap:6px;margin-bottom:5px;padding:5px;font-weight:bold;color:#666;font-size:10px;">
+                    <span>Cycle</span>
+                    <span style="text-align:center;">必須</span>
+                    <span style="text-align:center;">受諾</span>
+                    <span style="text-align:center;">Soft</span>
+                    <span style="text-align:center;">Hard</span>
                 </div>
                 ${ssdListHtml}
             </div>
@@ -502,7 +528,7 @@
         };
     };
 
-    // === 乗数設定ボックス ===
+    // === 乗数・調整設定ボックス ===
     const createMultiplierBox = () => {
         document.getElementById('dsp-multiplier-box')?.remove();
 
@@ -511,32 +537,54 @@
         box.style.cssText = `
             position:fixed;top:10px;right:5px;padding:1px 5px;background:#fff;
             border:1px solid #2196F3;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);
-            z-index:9999;font-size:12px;width:200px;
+            z-index:9999;font-size:12px;width:260px;
         `;
 
         const multipliers = getSSDMultipliers();
+        const adjustments = getSSDAdjustments();
         const visible = getSPRBoxVisible();
         const ssdList = ['SSD_1', 'SSD_C1', 'SSD_1_B', 'SSD_2', 'SSD_3', 'SSD_C3', 'SSD_3_B', 'SSD_4'];
 
+        const headerHtml = `
+            <div style="display:grid;grid-template-columns:70px 1fr 1fr;gap:6px;margin-bottom:6px;padding:0 2px;font-size:14px;color:#999;font-weight:bold;">
+                <span></span>
+                <span style="text-align:center;">SPR</span>
+                <span style="text-align:center;color:#f44336;">受諾調整</span>
+            </div>
+        `;
+
         const inputsHtml = ssdList.map(ssd =>
-            `<div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0;">
-                <label for="mult-${ssd}" style="font-size:12px;color:#555;">${ssd}:</label>
-                <input type="number" id="mult-${ssd}" value="${multipliers[ssd]}" step="1" min="0" max="100"
-                    style="width:60px;padding:4px 6px;border:1px solid #ccc;border-radius:4px;text-align:center;font-size:13px;">
+            `<div style="display:grid;grid-template-columns:70px 1fr 1fr;gap:6px;align-items:center;margin:4px 0;">
+                <label style="font-size:11px;color:#555;font-weight:bold;">${ssd}</label>
+                <input type="number" id="mult-${ssd}" value="${multipliers[ssd] || 1}" step="1" min="0" max="100"
+                    style="width:100%;padding:4px 4px;border:1px solid #ccc;border-radius:4px;text-align:center;font-size:12px;box-sizing:border-box;">
+                <input type="number" id="adj-${ssd}" value="${adjustments[ssd] || 0}" step="1" min="-999" max="999"
+                    style="width:100%;padding:4px 4px;border:1px solid #ffcdd2;border-radius:4px;text-align:center;font-size:12px;box-sizing:border-box;color:#f44336;font-weight:bold;">
             </div>`
         ).join('');
 
+        const resetBtnHtml = `
+            <div style="margin-top:8px;margin-bottom:4px;">
+                <button id="adj-reset-btn" style="width:100%;padding:4px;background:#ff8a80;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;">調整値リセット</button>
+            </div>
+        `;
+
         box.innerHTML = `
-            <div id="spr-header" style="font-weight:bold;color:#2196F3;margin-bottom:8px;font-size:14px;cursor:pointer;user-select:none;display:flex;align-items:center;">
+            <div id="spr-header" style="font-weight:bold;color:#2196F3;margin-bottom:8px;font-size:18px;cursor:pointer;user-select:none;display:flex;align-items:center;">
                 <span id="spr-icon">${visible ? '▼' : '▶'}</span>&nbsp;SPR設定
             </div>
-            <div id="spr-content" style="display:${visible ? 'block' : 'none'};">${inputsHtml}</div>
+            <div id="spr-content" style="display:${visible ? 'block' : 'none'};">
+                ${headerHtml}
+                ${inputsHtml}
+                ${resetBtnHtml}
+            </div>
         `;
 
         document.body.appendChild(box);
 
         setupToggle('spr-header', 'spr-content', 'spr-icon', saveSPRBoxVisible);
 
+        // SPR倍率の変更イベント
         ssdList.forEach(ssd => {
             document.getElementById(`mult-${ssd}`)?.addEventListener('change', function() {
                 const m = getSSDMultipliers();
@@ -546,6 +594,29 @@
                 calculateAndDisplay();
             });
         });
+
+        // 受諾調整の変更イベント
+        ssdList.forEach(ssd => {
+            document.getElementById(`adj-${ssd}`)?.addEventListener('change', function() {
+                const a = getSSDAdjustments();
+                a[ssd] = +this.value || 0;
+                saveSSDAdjustments(a);
+                currentAdjustments = a;
+                calculateAndDisplay();
+            });
+        });
+
+        // リセットボタン
+        document.getElementById('adj-reset-btn')?.addEventListener('click', () => {
+            const reset = { ...SSD_ADJUSTMENT_DEFAULTS };
+            saveSSDAdjustments(reset);
+            currentAdjustments = reset;
+            ssdList.forEach(ssd => {
+                const input = document.getElementById(`adj-${ssd}`);
+                if (input) input.value = 0;
+            });
+            calculateAndDisplay();
+        });
     };
 
     // === 初期化 ===
@@ -554,7 +625,7 @@
             calculateAndDisplay();
             createMultiplierBox();
             startObserver();
-            console.log('[DSP Counter v8.0] 起動完了');
+            console.log('[DSP Counter v8.5] 起動完了');
         }, 1000);
     };
 
