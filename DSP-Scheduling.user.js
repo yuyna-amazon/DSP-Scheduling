@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Schedulingで受諾済みを計算
 // @namespace    https://github.com/yuyna-amazon/DSP-Scheduling
-// @version      9.0
+// @version      9.1
 // @description  Amazon Logistics DSP Scheduling
 // @author       yuyna
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=amazon.com
@@ -283,6 +283,7 @@
         const subtract    = getC1C3Subtract();
 
 
+        var totalReq = 0, totalAcc = 0, totalSoft = 0, totalHard = 0;
         for (var ci = 0; ci < SSD_LIST.length; ci++) {
             var sk  = SSD_LIST[ci];
             var d   = currentSSDData[sk];
@@ -300,7 +301,32 @@
             if (accEl)  accEl.innerHTML    = d.accepted + formatAdjustment(adj);
             if (softEl) softEl.textContent = soft;
             if (hardEl) hardEl.textContent = hard;
+
+
+            totalReq  += d.required;
+            totalAcc  += d.accepted;
+            totalSoft += soft;
+            totalHard += hard;
         }
+
+
+        // 合計行更新
+        var totalReqEl  = document.getElementById('total-req');
+        var totalAccEl  = document.getElementById('total-acc');
+        var totalSoftEl = document.getElementById('total-soft');
+        var totalHardEl = document.getElementById('total-hard');
+        if (totalReqEl)  totalReqEl.textContent  = totalReq;
+        if (totalAccEl)  totalAccEl.textContent  = totalAcc;
+        if (totalSoftEl) totalSoftEl.textContent = totalSoft;
+        if (totalHardEl) totalHardEl.textContent = totalHard;
+
+
+        // Soft合計サマリー更新
+        var softTotals = calcSoftTotals();
+        var softReqEl = document.getElementById('summary-soft-req');
+        var softAccEl = document.getElementById('summary-soft-acc');
+        if (softReqEl) softReqEl.textContent = softTotals.fromRequired;
+        if (softAccEl) softAccEl.textContent = softTotals.fromAccepted;
 
 
         // pctラベル更新
@@ -411,6 +437,26 @@
         '<div style="font-weight:bold;color:' + color + ';padding:4px 2px;margin-bottom:6px;font-size:13px;border-bottom:1px solid #eee;">' + text + '</div>';
 
 
+    // Soft合計を2種類計算
+    // fromRequired: 必須合計ベース（SPR・pct・subtract適用）
+    // fromAccepted: 受諾済みベース（SPRのみ・pct適用・Buffer/adjust/subtractなし）
+    const calcSoftTotals = () => {
+        if (!currentSSDData) return { fromRequired: 0, fromAccepted: 0 };
+        const multipliers = getSSDMultipliers();
+        const overrides   = getC1C3Overrides();
+        const subtract    = getC1C3Subtract();
+        var fromRequired = 0, fromAccepted = 0;
+        for (var i = 0; i < SSD_LIST.length; i++) {
+            var sk = SSD_LIST[i];
+            var d  = currentSSDData[sk];
+            var m  = multipliers[sk] || 1;
+            fromRequired += applySubtract(sk, Math.round(d.required * m), overrides, subtract);
+            fromAccepted += Math.round(d.accepted * m);
+        }
+        return { fromRequired: fromRequired, fromAccepted: fromAccepted };
+    };
+
+
     // =====================================================
     // === 全UI描画
     // =====================================================
@@ -449,6 +495,7 @@
 
         // ---- 中パネル：Cycle別行 ----
         var ssdRowsHtml = '';
+        var totalReq = 0, totalAcc = 0, totalSoft = 0, totalHard = 0;
         for (var ci = 0; ci < SSD_LIST.length; ci++) {
             var sk  = SSD_LIST[ci];
             var d   = currentSSDData[sk];
@@ -458,6 +505,10 @@
             var baseSoft = (baseAcc + adj) * m;
             var soft     = applySubtract(sk, applyPct(baseSoft, pct), overrides, subtract);
             var hard     = Math.round(soft * 1.1);
+            totalReq  += d.required;
+            totalAcc  += d.accepted;
+            totalSoft += soft;
+            totalHard += hard;
             ssdRowsHtml +=
                 '<div style="display:grid;grid-template-columns:80px 60px 70px 70px 70px;gap:6px;margin:3px 0;padding:8px;background:#e3f2fd;border-radius:3px;align-items:center;">' +
                 '<span style="font-weight:bold;font-size:11px;">' + sk + '</span>' +
@@ -467,6 +518,15 @@
                 '<span id="cell-hard-' + sk + '" style="color:#9C27B0;font-weight:bold;text-align:center;">' + hard + '</span>' +
                 '</div>';
         }
+        // 合計行
+        ssdRowsHtml +=
+            '<div style="display:grid;grid-template-columns:80px 60px 70px 70px 70px;gap:6px;margin:4px 0 3px;padding:8px;background:#fffde7;border-radius:3px;align-items:center;border-top:2px solid #fff176;">' +
+            '<span style="font-weight:bold;font-size:11px;color:#333;">合計</span>' +
+            '<span id="total-req"  style="color:#FF9800;font-weight:bold;text-align:center;">' + totalReq  + '</span>' +
+            '<span id="total-acc"  style="color:#4CAF50;font-weight:bold;text-align:center;">' + totalAcc  + '</span>' +
+            '<span id="total-soft" style="color:#2196F3;font-weight:bold;text-align:center;">' + totalSoft + '</span>' +
+            '<span id="total-hard" style="color:#9C27B0;font-weight:bold;text-align:center;">' + totalHard + '</span>' +
+            '</div>';
 
 
         // ---- 右パネル：開始時刻別 ----
@@ -490,7 +550,8 @@
         var diff = totalAccepted - totalRequired;
         var diffColor = diff >= 0 ? '#4CAF50' : '#f44336';
         var proDPHtml = (proDPAccepted || proDPRequired) ?
-            '<div style="margin:5px 0;display:flex;justify-content:space-between;font-size:11px;color:#9e9e9e;padding-top:5px;border-top:1px dashed #e0e0e0;"><span>※ProDP除外:</span><span>受諾 ' + proDPAccepted + '</span></div>' : '';
+            '<span style="font-size:11px;color:#9e9e9e;">※ProDP除外: 受諾 ' + proDPAccepted + '</span>' : '';
+        var softTotals = calcSoftTotals();
         var pctLabelText  = pct === 0 ? '' : ' ' + (pct > 0 ? '+' : '') + pct + '%';
         var pctLabelColor = pct > 0 ? '#2196F3' : '#f44336';
 
@@ -536,7 +597,7 @@
             '</div>' +
             // 全Soft調整
             '<div style="margin-top:12px;padding-top:10px;border-top:2px solid #e3f2fd;">' +
-            '<div style="font-weight:bold;color:#2196F3;font-size:13px;margin-bottom:6px;">全SoftCap調整</div>' +
+            '<div style="font-weight:bold;color:#2196F3;font-size:13px;margin-bottom:6px;">全Soft調整</div>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input type="number" id="soft-pct-input" value="' + pct + '" step="1" min="-100" max="200"' +
             ' style="width:80px;padding:5px;border:2px solid #2196F3;border-radius:4px;text-align:center;font-size:14px;font-weight:bold;box-sizing:border-box;" />' +
@@ -551,11 +612,19 @@
         var midPanel = document.createElement('div');
         midPanel.style.cssText = 'width:390px;min-width:390px;padding:6px 8px;border-right:2px solid #e3f2fd;max-height:600px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box;';
         midPanel.innerHTML =
-            '<div style="background:#e8f5e9;padding:10px;border-radius:5px;margin-bottom:10px;">' +
-            '<div style="margin:5px 0;display:flex;justify-content:space-between;"><span>必須合計:</span><strong style="color:#F57C00;">' + totalRequired + '</strong></div>' +
-            '<div style="margin:5px 0;display:flex;justify-content:space-between;"><span>受諾済み:</span><strong style="color:#2e7d32;">' + totalAccepted + '</strong></div>' +
-            '<div style="margin:5px 0;display:flex;justify-content:space-between;padding-top:5px;border-top:1px solid #c8e6c9;"><span>Gap:</span><strong style="color:' + diffColor + ';">' + (diff >= 0 ? '+' : '') + diff + '</strong></div>' +
+            '<div style="background:#e8f5e9;padding:8px 10px;border-radius:5px;margin-bottom:10px;">' +
+            '<div style="display:grid;grid-template-columns:1fr auto;align-items:center;margin:4px 0;">' +
+            '<span>必須合計: <strong style="color:#F57C00;">' + totalRequired + '</strong></span>' +
+            '<span style="font-size:11px;color:#666;">Soft: <strong id="summary-soft-req" style="color:#2196F3;">' + softTotals.fromRequired + '</strong></span>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:1fr auto;align-items:center;margin:4px 0;">' +
+            '<span>受諾済み: <strong style="color:#2e7d32;">' + totalAccepted + '</strong></span>' +
+            '<span style="font-size:11px;color:#666;">Soft: <strong id="summary-soft-acc" style="color:#2196F3;">' + softTotals.fromAccepted + '</strong></span>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;padding-top:5px;border-top:1px solid #c8e6c9;">' +
+            '<span>Gap: <strong style="color:' + diffColor + ';">' + (diff >= 0 ? '+' : '') + diff + '</strong></span>' +
             proDPHtml +
+            '</div>' +
             '</div>' +
             '<div style="display:grid;grid-template-columns:80px 60px 70px 70px 70px;gap:6px;margin-bottom:5px;padding:3px 5px;font-weight:bold;color:#666;font-size:10px;">' +
             '<span>Cycle</span><span style="text-align:center;">必須</span>' +
