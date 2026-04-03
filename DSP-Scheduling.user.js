@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Schedulingで受諾済みを計算
 // @namespace    https://github.com/yuyna-amazon/DSP-Scheduling
-// @version      8.6
+// @version      9.0
 // @description  Amazon Logistics DSP Scheduling
 // @author       yuyna
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=amazon.com
@@ -536,7 +536,7 @@
             '</div>' +
             // 全Soft調整
             '<div style="margin-top:12px;padding-top:10px;border-top:2px solid #e3f2fd;">' +
-            '<div style="font-weight:bold;color:#2196F3;font-size:13px;margin-bottom:6px;">全Soft調整</div>' +
+            '<div style="font-weight:bold;color:#2196F3;font-size:13px;margin-bottom:6px;">全SoftCap調整</div>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input type="number" id="soft-pct-input" value="' + pct + '" step="1" min="-100" max="200"' +
             ' style="width:80px;padding:5px;border:2px solid #2196F3;border-radius:4px;text-align:center;font-size:14px;font-weight:bold;box-sizing:border-box;" />' +
